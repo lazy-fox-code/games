@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Тропинка домой</title>
+<script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;background:#EEEEF0;}
+  *{box-sizing:border-box;}
+  body{padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);}
+  .vk-app{background:#EEEEF0; padding:0 0 10px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; max-width:480px; margin:0 auto; min-height:100vh;}
+  .vk-header{display:flex; align-items:center; gap:10px; padding:12px 14px; background:#fff; border-bottom:1px solid #E4E5E8;}
+  .vk-header-icon{width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,#4FA8F0,#2787F5); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0;}
+  .vk-header-text{flex:1; min-width:0;}
+  .vk-title{font-size:15px; font-weight:600; color:#000; line-height:1.2;}
+  .vk-subtitle{font-size:12px; color:#818C99; line-height:1.3;}
+  .vk-score{display:flex; align-items:center; gap:4px; background:#E8F3FF; color:#2787F5; font-weight:700; font-size:14px; padding:5px 11px; border-radius:999px; flex-shrink:0;}
+  .vk-toolbar{display:flex; justify-content:flex-end; padding:9px 14px 0;}
+  .vk-btn{display:flex; align-items:center; gap:6px; background:#2787F5; color:#fff; border:none; font-size:13px; font-weight:600; padding:8px 14px; border-radius:10px; font-family:inherit;}
+  .vk-cardwrap{padding:10px 10px 0;}
+  .vk-tabbar{display:flex; padding:8px 6px 2px; margin-top:4px;}
+  .vk-tab{flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; color:#B5BBC2; font-size:10px; padding:4px 0;}
+  .vk-tab.active{color:#2787F5;}
+  .vk-tab-icon{font-size:19px;}
+  #stage:fullscreen{width:100vw;height:100vh;border-radius:0;aspect-ratio:auto;}
+  #stage:-webkit-full-screen{width:100vw;height:100vh;border-radius:0;aspect-ratio:auto;}
+  #stage:focus{outline:none;}
+  .bglayer{position:absolute; inset:0; opacity:0; transition:opacity 2.5s ease; pointer-events:none; overflow:hidden;}
+  .skyicon{position:absolute; top:5%; right:7%; font-size:9vmin;}
+  .star{position:absolute; border-radius:50%; background:#fff; opacity:0.85; animation:twinkle 2.4s ease-in-out infinite;}
+  @keyframes twinkle{0%,100%{opacity:0.25;}50%{opacity:0.95;}}
+  .scrolllayer{position:absolute; inset:0; overflow:hidden; pointer-events:none;}
+  .scrolllayer svg{display:block; width:100%; height:100%;}
+  @keyframes scrollFarY{from{transform:translateY(0);} to{transform:translateY(25%);}}
+  #world{position:absolute; left:0; top:0; width:100%; height:300%; pointer-events:none; z-index:1;}
+  .wdecor{position:absolute; transform:translate(-50%,-50%); pointer-events:none;}
+  .creature{position:absolute; transform:translate(-50%,-50%); z-index:3; user-select:none; -webkit-user-select:none; touch-action:none; cursor:grab;}
+  .creature .bob{display:inline-block; font-size:9.5vmin; animation:walk 0.9s ease-in-out infinite;}
+  .creature.dragging .bob{animation-play-state:paused;}
+  @keyframes walk{0%,100%{transform:translateY(0) rotate(0deg);}25%{transform:translateY(-3%) rotate(-6deg);}50%{transform:translateY(-5%) rotate(0deg);}75%{transform:translateY(-3%) rotate(6deg);}}
+  .sparkle{position:absolute; pointer-events:none; font-size:5vmin; z-index:6; transform:translate(-50%,-50%) scale(0); transition:transform 0.4s cubic-bezier(.34,1.56,.64,1), opacity 0.5s ease 0.4s;}
+  .sr-only{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);}
+</style>
+</head>
+<body>
+<div class="vk-app">
+  <div class="vk-header">
+    <div class="vk-header-icon">🌴</div>
+    <div class="vk-header-text">
+      <div class="vk-title">Тропинка домой</div>
+      <div class="vk-subtitle">мини-игра · для малышей</div>
+    </div>
+    <div class="vk-score" id="scoreEl">⭐ 0</div>
+  </div>
+  <div class="vk-toolbar">
+    <button class="vk-btn" id="fsBtn"><span>⤢</span>На весь экран</button>
+  </div>
+  <div class="vk-cardwrap">
+    <h1 class="sr-only">Игра-путешествие: мир медленно едет вниз, открывая по очереди озеро, лес, пальмовый остров, пустыню и цветочную поляну. Внизу постепенно появляются зверята — рыбка, лиса, лев и бабочка. Нужно дождаться нужного места на экране и перетащить туда зверя. За каждое верное место — плюс одно очко.</h1>
+    <div id="stage" tabindex="0" style="position: relative; width: 100%; aspect-ratio: 3/4; background-color: #dfe3e6; border-radius: 16px; overflow: hidden; touch-action: none; cursor: default;">
+      <div id="bgA" class="bglayer"></div>
+      <div id="bgB" class="bglayer"></div>
+      <div class="scrolllayer">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs><pattern id="pf" width="100" height="25" patternUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="100" height="2.2" fill="#ffffff" opacity="0.16"/>
+          </pattern></defs>
+          <rect x="0" y="-25" width="100" height="150" fill="url(#pf)" style="animation:scrollFarY 16s linear infinite;"/>
+        </svg>
+      </div>
+      <div id="world">
+        <svg viewBox="0 0 100 300" preserveAspectRatio="none" style="position:absolute; inset:0; width:100%; height:100%;">
+          <path d="M50,0 Q14,20 26,40 Q38,60 18,78 Q6,96 78,115 Q98,130 58,150 Q26,168 18,190 Q8,212 68,245 Q88,258 50,278 Q34,290 50,297" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.6" stroke-dasharray="3 3" stroke-linecap="round"/>
+          <ellipse cx="26" cy="40" rx="21" ry="13" fill="#7BB8DE" opacity="0.9"/>
+          <ellipse cx="20" cy="35" rx="7" ry="3" fill="#ffffff" opacity="0.35"/>
+          <ellipse cx="78" cy="115" rx="16" ry="11" fill="#8FBE72" opacity="0.55"/>
+          <ellipse cx="18" cy="190" rx="15" ry="9" fill="#E8D5A0" opacity="0.85"/>
+          <ellipse cx="68" cy="245" rx="17" ry="10" fill="#F0D48A" opacity="0.85"/>
+          <ellipse cx="50" cy="278" rx="24" ry="10" fill="#C6E3A0" opacity="0.6"/>
+        </svg>
+        <div id="worldDecor"></div>
+      </div>
+      <div id="hint" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:18px; color:#fff; text-shadow:0 1px 6px rgba(0,0,0,0.4); pointer-events:none; text-align:center; padding: 0 2rem; z-index:4;">Дождись домика и веди зверя туда</div>
+    </div>
+  </div>
+  <div class="vk-tabbar">
+    <div class="vk-tab active"><span class="vk-tab-icon">🎮</span>Игры</div>
+    <div class="vk-tab"><span class="vk-tab-icon">⭐</span>Избранное</div>
+    <div class="vk-tab"><span class="vk-tab-icon">👤</span>Профиль</div>
+  </div>
+</div>
+<script>
+  if (window.vkBridge) { try { vkBridge.send('VKWebAppInit'); } catch(e) {} }
+</script>
+<script>
+(function(){
+  const stage = document.getElementById('stage');
+  const hint = document.getElementById('hint');
+  const fsBtn = document.getElementById('fsBtn');
+  const bgA = document.getElementById('bgA');
+  const bgB = document.getElementById('bgB');
+  const scoreEl = document.getElementById('scoreEl');
+  const world = document.getElementById('world');
+  const worldDecor = document.getElementById('worldDecor');
+
+  const digitNames = ['ноль','один','два','три','четыре','пять','шесть','семь','восемь','девять'];
+  const letterNames = {'а':'а','б':'бэ','в':'вэ','г':'гэ','д':'дэ','е':'е','ё':'ё','ж':'жэ','з':'зэ','и':'и','й':'и краткое','к':'ка','л':'эль','м':'эм','н':'эн','о':'о','п':'пэ','р':'эр','с':'эс','т':'тэ','у':'у','ф':'эф','х':'ха','ц':'цэ','ч':'че','ш':'ша','щ':'ща','ъ':'твёрдый знак','ы':'ы','ь':'мягкий знак','э':'э','ю':'ю','я':'я'};
+
+  const dayThemes = [
+    { name:'утро', grad:'linear-gradient(180deg, #FAC775 0%, #FAEEDA 45%, #C0DD97 100%)', icon:'☀️' },
+    { name:'день', grad:'linear-gradient(180deg, #85B7EB 0%, #E6F1FB 55%, #C0DD97 100%)', icon:'☀️' },
+    { name:'вечер', grad:'linear-gradient(180deg, #D85A30 0%, #F0997B 40%, #AFA9EC 100%)', icon:'🌇' },
+    { name:'ночь', grad:'linear-gradient(180deg, #26215C 0%, #3C3489 55%, #534AB7 100%)', icon:'🌙', stars:true }
+  ];
+  function buildLayer(theme){
+    let html = `<div style="position:absolute; inset:0; background:${theme.grad};"></div><div class="skyicon">${theme.icon}</div>`;
+    if(theme.stars){
+      for(let i=0;i<16;i++){
+        const size = 2 + Math.random()*3, left = Math.random()*96, top = Math.random()*40, delay = (Math.random()*2.4).toFixed(2);
+        html += `<div class="star" style="width:${size}px; height:${size}px; left:${left}%; top:${top}%; animation-delay:${delay}s;"></div>`;
+      }
+    }
+    return html;
+  }
+  const layers = [bgA, bgB];
+  let activeLayer = 0;
+  function showTheme(theme){
+    const next = layers[1-activeLayer];
+    next.innerHTML = buildLayer(theme);
+    next.style.opacity = '1';
+    layers[activeLayer].style.opacity = '0';
+    activeLayer = 1-activeLayer;
+  }
+  const hour = new Date().getHours();
+  let themeIndex = hour < 6 || hour >= 21 ? 3 : hour < 11 ? 0 : hour < 18 ? 1 : 2;
+  layers[0].innerHTML = buildLayer(dayThemes[themeIndex]);
+  layers[0].style.opacity = '1';
+  setInterval(()=>{ themeIndex = (themeIndex + 1) % dayThemes.length; showTheme(dayThemes[themeIndex]); }, 18000);
+
+  let audioCtx;
+  function ctx(){ audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
+  function tone(f, start, dur, type, slideTo, vol){
+    try{
+      const c = ctx(); const t0 = c.currentTime + start;
+      const osc = c.createOscillator(); const gain = c.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(f, t0);
+      if(slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(vol || 0.28, t0 + Math.min(0.03, dur*0.3));
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(t0); osc.stop(t0 + dur + 0.02);
+    }catch(err){}
+  }
+  const sounds = {
+    splash: ()=>{ tone(600,0,0.12,'sine',220); tone(420,0.09,0.16,'sine',180); },
+    yip: ()=>{ tone(520,0,0.07,'square'); tone(680,0.09,0.07,'square'); },
+    roar: ()=>{ tone(110,0,0.5,'sawtooth',180,0.3); tone(160,0.15,0.35,'sawtooth',90,0.25); },
+    twinkle: ()=>{ tone(1200,0,0.07,'sine'); tone(1500,0.08,0.07,'sine'); tone(1800,0.16,0.09,'sine'); },
+    chime: ()=>{ tone(900,0,0.16,'sine'); tone(1350,0.1,0.2,'sine'); tone(1800,0.2,0.22,'sine'); }
+  };
+  function playCharTone(){ tone(500 + Math.random()*250, 0, 0.15, 'sine', 750 + Math.random()*250); }
+
+  let voices = [];
+  function loadVoices(){ voices = (window.speechSynthesis && speechSynthesis.getVoices()) || []; }
+  if(window.speechSynthesis){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+  function speakRu(text){
+    try{
+      if(!window.speechSynthesis) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.15;
+      const ruVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('ru'));
+      if(ruVoice) u.voice = ruVoice;
+      speechSynthesis.speak(u);
+    }catch(err){}
+  }
+
+  const decorList = [
+    {emoji:'🌾', worldY:35, x:8, size:6}, {emoji:'🌾', worldY:48, x:44, size:6},
+    {emoji:'🌲', worldY:108, x:70, size:9}, {emoji:'🌲', worldY:120, x:86, size:8}, {emoji:'🌲', worldY:124, x:80, size:7},
+    {emoji:'🌴', worldY:185, x:11, size:10}, {emoji:'🌴', worldY:196, x:23, size:8},
+    {emoji:'🌵', worldY:240, x:60, size:7}, {emoji:'🌵', worldY:250, x:76, size:6},
+    {emoji:'🌸', worldY:272, x:40, size:6}, {emoji:'🌼', worldY:268, x:52, size:6}, {emoji:'🌸', worldY:282, x:62, size:6}, {emoji:'🌼', worldY:277, x:68, size:5}
+  ];
+  decorList.forEach(d=>{
+    const el = document.createElement('div');
+    el.className = 'wdecor';
+    el.textContent = d.emoji;
+    el.style.left = d.x + '%';
+    el.style.top = (d.worldY/3) + '%';
+    el.style.fontSize = d.size + 'vmin';
+    worldDecor.appendChild(el);
+  });
+
+  const spots = [
+    {key:'lake', x:26, worldY:40, threshold:0.24},
+    {key:'pine', x:78, worldY:115, threshold:0.18},
+    {key:'palm', x:18, worldY:190, threshold:0.17},
+    {key:'flower', x:50, worldY:278, threshold:0.2}
+  ];
+  const creatureTypes = [
+    {emoji:'🐟', target:'lake', sound:'splash'},
+    {emoji:'🦊', target:'pine', sound:'yip'},
+    {emoji:'🦁', target:'palm', sound:'roar'},
+    {emoji:'🦋', target:'flower', sound:'twinkle'}
+  ];
+
+  let worldOffset = 0, worldDir = 1;
+  const maxOffset = 200, traversalMs = 55000;
+  const speed = maxOffset / traversalMs;
+  let lastTs = null;
+  function tick(ts){
+    if(lastTs === null) lastTs = ts;
+    const dt = ts - lastTs; lastTs = ts;
+    worldOffset += worldDir * speed * dt;
+    if(worldOffset >= maxOffset){ worldOffset = maxOffset; worldDir = -1; }
+    else if(worldOffset <= 0){ worldOffset = 0; worldDir = 1; }
+    world.style.transform = `translateY(-${(worldOffset/3).toFixed(3)}%)`;
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  let score = 0;
+  function addScore(){ score++; scoreEl.textContent = '⭐ ' + score; }
+
+  function burst(x, y, emoji){
+    for(let i=0;i<5;i++){
+      const s = document.createElement('div');
+      s.className = 'sparkle'; s.textContent = emoji || '✨';
+      const ang = (i/5) * Math.PI*2, dist = 8 + Math.random()*4;
+      s.style.left = x + '%'; s.style.top = y + '%';
+      stage.appendChild(s);
+      requestAnimationFrame(()=>{
+        s.style.transform = `translate(calc(-50% + ${Math.cos(ang)*dist}vmin), calc(-50% + ${Math.sin(ang)*dist}vmin)) scale(1)`;
+        s.style.opacity = '0';
+      });
+      setTimeout(()=> s.remove(), 900);
+    }
+  }
+  function floatPlusOne(x, y){
+    const el = document.createElement('div');
+    el.textContent = '+1';
+    el.style.cssText = `position:absolute; left:${x}%; top:${y}%; transform:translate(-50%,-50%); font-size:5vmin; font-weight:700; color:#EF9F27; text-shadow:0 1px 3px rgba(0,0,0,0.25); z-index:7; pointer-events:none; transition: top 0.9s ease, opacity 0.9s ease;`;
+    stage.appendChild(el);
+    requestAnimationFrame(()=>{ el.style.top = (y-10) + '%'; el.style.opacity = '0'; });
+    setTimeout(()=> el.remove(), 950);
+  }
+
+  let activeCreatures = [];
+  const maxActive = 5;
+  const queueSlots = [30, 40, 50, 60, 70];
+
+  function attachDrag(el, type){
+    let dragging = false;
+    function moveTo(e){
+      const rect = stage.getBoundingClientRect();
+      let px = ((e.clientX - rect.left)/rect.width)*100;
+      let py = ((e.clientY - rect.top)/rect.height)*100;
+      px = Math.max(4, Math.min(96, px));
+      py = Math.max(4, Math.min(96, py));
+      el.style.left = px + '%';
+      el.style.top = py + '%';
+    }
+    el.addEventListener('pointerdown', (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      hint.style.display = 'none';
+      dragging = true;
+      try{ el.setPointerCapture(e.pointerId); }catch(err){}
+      el.classList.add('dragging');
+      el.style.zIndex = 20;
+      el.style.cursor = 'grabbing';
+      moveTo(e);
+    });
+    el.addEventListener('pointermove', (e)=>{ if(dragging){ e.preventDefault(); moveTo(e); } });
+    el.addEventListener('pointerup', (e)=>{
+      if(!dragging) return;
+      dragging = false;
+      el.classList.remove('dragging');
+      el.style.cursor = 'grab';
+      checkDrop(el, type);
+    });
+    el.addEventListener('pointercancel', ()=>{ dragging = false; el.classList.remove('dragging'); });
+    el.addEventListener('contextmenu', (e)=> e.preventDefault());
+  }
+
+  function checkDrop(el, type){
+    const rect = stage.getBoundingClientRect();
+    const ex = parseFloat(el.style.left), ey = parseFloat(el.style.top);
+    let matched = false;
+    for(const spot of spots){
+      const curY = spot.worldY - worldOffset;
+      const dxPx = ((ex - spot.x)/100) * rect.width;
+      const dyPx = ((ey - curY)/100) * rect.height;
+      const dist = Math.hypot(dxPx, dyPx);
+      const threshold = Math.min(rect.width, rect.height) * spot.threshold;
+      if(dist < threshold){
+        if(spot.key === type.target){ matched = true; lockCreature(el, spot, type, curY); }
+        break;
+      }
+    }
+    if(!matched){
+      el.style.transform = 'translate(-50%,-50%) scale(0.92)';
+      setTimeout(()=>{ el.style.transform = 'translate(-50%,-50%) scale(1)'; }, 180);
+    }
+  }
+
+  function lockCreature(el, spot, type, curY){
+    el.style.transition = 'left 0.3s ease, top 0.3s ease';
+    const jx = Math.random()*10 - 5, jy = Math.random()*6 - 3;
+    const fx = spot.x + jx, fy = curY + jy;
+    el.style.left = fx + '%';
+    el.style.top = fy + '%';
+    el.style.pointerEvents = 'none';
+    el.style.cursor = 'default';
+    addScore();
+    (sounds[type.sound] || sounds.chime)();
+    setTimeout(()=> sounds.chime(), 200);
+    burst(fx, fy, '✨');
+    floatPlusOne(fx, fy);
+    activeCreatures = activeCreatures.filter(c => c !== el);
+    setTimeout(()=>{
+      el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+      el.style.opacity = '0';
+      el.style.transform = 'translate(-50%,-50%) scale(0.5)';
+      setTimeout(()=> el.remove(), 650);
+    }, 1300);
+  }
+
+  function spawnCreature(){
+    if(activeCreatures.length >= maxActive) return;
+    const type = creatureTypes[Math.floor(Math.random()*creatureTypes.length)];
+    const el = document.createElement('div');
+    el.className = 'creature';
+    el.innerHTML = `<span class="bob">${type.emoji}</span>`;
+    const slotX = queueSlots[activeCreatures.length % queueSlots.length];
+    el.style.left = slotX + '%';
+    el.style.top = '95%';
+    el.style.transform = 'translate(-50%,-50%) scale(0)';
+    stage.appendChild(el);
+    requestAnimationFrame(()=>{
+      el.style.transition = 'transform 0.35s cubic-bezier(.34,1.56,.64,1)';
+      el.style.transform = 'translate(-50%,-50%) scale(1)';
+    });
+    attachDrag(el, type);
+    activeCreatures.push(el);
+  }
+
+  setTimeout(spawnCreature, 1000);
+  setInterval(spawnCreature, 5000);
+
+  stage.addEventListener('pointerdown', ()=> stage.focus());
+  stage.addEventListener('contextmenu', (e)=> e.preventDefault());
+  stage.addEventListener('auxclick', (e)=> e.preventDefault());
+
+  function popEl(x, y, content, size, colored){
+    const el = document.createElement('div');
+    el.textContent = content;
+    let extra = colored ? `color:${colored}; font-weight:500; font-family: inherit;` : '';
+    el.style.cssText = `position:absolute; left:${x}%; top:${y}%; font-size:${size}px; ${extra} transform: translate(-50%,-50%) scale(0); pointer-events:none; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), top 1.4s ease-in, opacity 0.4s ease-in 1s; z-index:8;`;
+    stage.appendChild(el);
+    requestAnimationFrame(()=>{ el.style.transform = 'translate(-50%,-50%) scale(1)'; });
+    setTimeout(()=>{ el.style.top = (parseFloat(el.style.top) - 8) + '%'; el.style.opacity = '0'; }, 550);
+    setTimeout(()=> el.remove(), 2000);
+  }
+  function spawnChar(ch){
+    hint.style.display = 'none';
+    const lx = 15 + Math.random()*70, ly = 15 + Math.random()*70;
+    const color = ['#7F77DD','#1D9E75','#D85A30','#D4537E','#378ADD'][Math.floor(Math.random()*5)];
+    popEl(lx, ly, ch, 70, color);
+    playCharTone();
+    const lower = ch.toLowerCase();
+    if(/[0-9]/.test(ch)) speakRu(digitNames[Number(ch)]);
+    else if(letterNames[lower]) speakRu(letterNames[lower]);
+    else if(ch === ' ') speakRu('пробел');
+  }
+  window.addEventListener('keydown', (e)=>{
+    if(e.key && e.key.length === 1){ e.preventDefault(); spawnChar(e.key); }
+    else if(e.key === ' '){ e.preventDefault(); spawnChar(' '); }
+    else { e.preventDefault(); }
+  }, true);
+
+  fsBtn.addEventListener('click', ()=>{
+    if(stage.requestFullscreen){ stage.requestFullscreen().catch(()=>{}); }
+    else if(stage.webkitRequestFullscreen){ stage.webkitRequestFullscreen(); }
+    stage.focus();
+  });
+  document.addEventListener('fullscreenchange', ()=>{
+    fsBtn.style.display = document.fullscreenElement ? 'none' : 'flex';
+    stage.focus();
+  });
+  stage.focus();
+})();
+</script>
+</body>
+</html>
